@@ -26,7 +26,7 @@ function loadState(): GameState {
     if (!Array.isArray(parsed.board) || parsed.board.length < 3) return emptyState();
     const savedBalanceVersion = parsed.balanceVersion ?? 1;
     const leopardLossThreshold =
-      savedBalanceVersion < BALANCE_VERSION && (parsed.leopardLossThreshold ?? 3) <= 3
+      savedBalanceVersion < BALANCE_VERSION && (parsed.leopardLossThreshold ?? 4) === 4
         ? DEFAULT_LEOPARD_LOSS_THRESHOLD
         : parsed.leopardLossThreshold ?? DEFAULT_LEOPARD_LOSS_THRESHOLD;
     const gameOver =
@@ -48,7 +48,7 @@ function loadState(): GameState {
       gateCosts: parsed.gateCosts ?? [5, 7],
       turnRolled: parsed.turnRolled ?? (parsed.pendingMove ?? 0) > 0,
       notifications: parsed.notifications ?? [],
-      pendingChallenge: parsed.pendingChallenge?.kind ? parsed.pendingChallenge : undefined,
+      pendingChallenge: legendWinner || gameOver ? undefined : parsed.pendingChallenge?.kind ? parsed.pendingChallenge : undefined,
       board: parsed.board.map((tier) => tier.map((tile) => ({ ...tile, desecrated: tile.desecrated ?? false }))),
       players: parsed.players.map((player, index) => ({
         ...player,
@@ -76,7 +76,7 @@ export default function App() {
   );
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitizePersistedState(state)));
   }, [state]);
 
   useEffect(() => {
@@ -160,11 +160,15 @@ export default function App() {
               <GameLog entries={state.log} />
             </aside>
           </div>
-          {state.pendingChallenge && <ChallengeModal state={state} dispatch={dispatch} />}
+          {state.pendingChallenge && !state.gameOver && <ChallengeModal state={state} dispatch={dispatch} />}
           {(state.collectiveRite || state.riteResolution) && <CollectiveRiteModal state={state} dispatch={dispatch} />}
           {state.pendingDiscard && <DiscardBoonModal state={state} dispatch={dispatch} />}
         </>
       )}
     </main>
   );
+}
+
+function sanitizePersistedState(state: GameState): GameState {
+  return state.gameOver ? { ...state, pendingChallenge: undefined } : state;
 }

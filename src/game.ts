@@ -25,8 +25,8 @@ const TILE_COUNTS = [OUTER_TILES, SECOND_TILES, INNER_TILES];
 const INNER_TIER = 2;
 const ALTAR_TIER = 3;
 const PAID_GATES_TO_WIN = 2;
-export const BALANCE_VERSION = 4;
-export const DEFAULT_LEOPARD_LOSS_THRESHOLD = 4;
+export const BALANCE_VERSION = 5;
+export const DEFAULT_LEOPARD_LOSS_THRESHOLD = 3;
 export const DEFAULT_LEGENDARY_VICTORY_THRESHOLD = 15;
 const START: Position = { tier: 0, index: 0 };
 const PLAYER_COLORS = ["#ef4444", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0f766e"];
@@ -92,6 +92,7 @@ export const emptyState = (): GameState => ({
 
 export function reducer(state: GameState, action: GameAction): GameState {
   if (action.type === "RESET") return emptyState();
+  if (state.gameOver && action.type === "RESOLVE_CHALLENGE") return { ...state, pendingChallenge: undefined };
   if (
     state.gameOver &&
     !["RESET", "NEW_GAME", "TOGGLE_PLAYTEST", "SET_RITE_CHOICE", "RESOLVE_COLLECTIVE_RITE", "DISMISS_RITE_REVEAL", "DISMISS_NOTIFICATION"].includes(action.type)
@@ -844,6 +845,7 @@ function buyLeopardWard(state: GameState, playerId: string): GameState {
 }
 
 function beginChallenge(state: GameState, challenge: PendingChallenge): GameState {
+  if (state.gameOver) return state;
   return addLog({ ...state, pendingChallenge: challenge }, `${playerName(state, challenge.playerId)} may attempt ${challenge.title} for a greater legend.`);
 }
 

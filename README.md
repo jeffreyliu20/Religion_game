@@ -47,7 +47,7 @@ Vite will print a local URL, usually `http://127.0.0.1:5173/`.
   - 5-6 outward
   - 7 stalks and does not move
   - 8-10 inward
-- Leopard altar visits increment leopard LV/visits. The digital balance default is 4 visits before collective loss; Playtest Mode can tune this threshold.
+- Leopard altar visits increment leopard LV/visits. The digital balance default is 3 visits before collective loss; Playtest Mode can tune this threshold.
 - If the leopard lands adjacent to non-protected players, it eats at most one of them, prioritizing a player on its tile. The eaten player loses half RV rounded up, returns to start, and gains LV equal to leopard visits + 1.
 - Gates repel the leopard onward when it crosses them, so it can disrupt gate areas without camping directly on the threshold.
 - At the start of each new round, the second tier rotates 1 tile clockwise so the gate geometry keeps shifting.
