@@ -6,6 +6,7 @@ import {
   GameLogEntry,
   GameNotification,
   GameState,
+  PendingChallenge,
   Player,
   Position,
   RelicId,
@@ -24,10 +25,12 @@ const TILE_COUNTS = [OUTER_TILES, SECOND_TILES, INNER_TILES];
 const INNER_TIER = 2;
 const ALTAR_TIER = 3;
 const PAID_GATES_TO_WIN = 2;
-export const BALANCE_VERSION = 2;
+export const BALANCE_VERSION = 4;
 export const DEFAULT_LEOPARD_LOSS_THRESHOLD = 4;
+export const DEFAULT_LEGENDARY_VICTORY_THRESHOLD = 15;
 const START: Position = { tier: 0, index: 0 };
 const PLAYER_COLORS = ["#ef4444", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0f766e"];
+const AI_PERSONALITIES = ["pilgrim", "martyr", "steward", "trickster"] as const;
 
 export type GameAction =
   | { type: "NEW_GAME"; playerCount: number; names: string[]; aiPlayers: boolean[]; sacredItems: SacredItemId[] }
@@ -42,6 +45,10 @@ export type GameAction =
   | { type: "TRIGGER_ITEM"; playerId: string }
   | { type: "TRIGGER_FOLLOWER"; playerId: string; follower: FollowerId }
   | { type: "TRIGGER_RELIC"; playerId: string; relic: RelicId }
+  | { type: "RECRUIT_BOON_WITH_LV"; playerId: string; boonType: RitualBoonType }
+  | { type: "BUY_DIE_UPGRADE"; playerId: string }
+  | { type: "BUY_LEOPARD_WARD"; playerId: string }
+  | { type: "RESOLVE_CHALLENGE"; accepted: boolean; success?: boolean }
   | { type: "TOGGLE_PLAYTEST" }
   | { type: "ADJUST_PLAYER"; playerId: string; stat: "rv" | "lv"; delta: number }
   | { type: "NUDGE_PLAYER"; playerId: string; direction: Direction | "in" | "out" | "start" }
@@ -58,8 +65,10 @@ export type GameAction =
   | { type: "START_COLLECTIVE_RITE" }
   | { type: "SET_RITE_CHOICE"; playerId: string; choice: CollectiveRiteChoice }
   | { type: "RESOLVE_COLLECTIVE_RITE" }
+  | { type: "DISMISS_RITE_REVEAL" }
   | { type: "SET_GATE_COST"; gate: 0 | 1; cost: number }
   | { type: "SET_LEOPARD_THRESHOLD"; threshold: number }
+  | { type: "SET_LEGENDARY_THRESHOLD"; threshold: number }
   | { type: "DISMISS_NOTIFICATION"; notificationId: string };
 
 export const emptyState = (): GameState => ({
@@ -71,6 +80,7 @@ export const emptyState = (): GameState => ({
   leopard: { ...START },
   leopardVisits: 0,
   leopardLossThreshold: DEFAULT_LEOPARD_LOSS_THRESHOLD,
+  legendaryVictoryThreshold: DEFAULT_LEGENDARY_VICTORY_THRESHOLD,
   gateCosts: [5, 7],
   pendingMove: 0,
   turnRolled: false,
@@ -84,7 +94,7 @@ export function reducer(state: GameState, action: GameAction): GameState {
   if (action.type === "RESET") return emptyState();
   if (
     state.gameOver &&
-    !["RESET", "NEW_GAME", "TOGGLE_PLAYTEST", "SET_RITE_CHOICE", "RESOLVE_COLLECTIVE_RITE", "DISMISS_NOTIFICATION"].includes(action.type)
+    !["RESET", "NEW_GAME", "TOGGLE_PLAYTEST", "SET_RITE_CHOICE", "RESOLVE_COLLECTIVE_RITE", "DISMISS_RITE_REVEAL", "DISMISS_NOTIFICATION"].includes(action.type)
   ) {
     return addLog(state, "The ritual has ended. Reset or start a new game to continue.");
   }
@@ -95,10 +105,11 @@ export function reducer(state: GameState, action: GameAction): GameState {
     case "ROLL_D4": {
       if (currentPlayer(state).isAI) return addLog(state, `${currentPlayer(state).name} is controlled by AI.`);
       if (state.turnRolled) return addLog(state, `${currentPlayer(state).name} has already rolled this turn.`);
-      const roll = d(4);
+      const sides = currentPlayer(state).movementDie ?? 4;
+      const roll = d(sides);
       return addLog(
         { ...state, pendingMove: roll, turnRolled: true, lastRolls: { ...state.lastRolls, d4: roll } },
-        `${currentPlayer(state).name} rolled D4 = ${roll}.`,
+        `${currentPlayer(state).name} rolled D${sides} = ${roll}.`,
       );
     }
     case "ROLL_D10":
@@ -125,6 +136,14 @@ export function reducer(state: GameState, action: GameAction): GameState {
       return triggerFollower(state, action.playerId, action.follower);
     case "TRIGGER_RELIC":
       return triggerRelic(state, action.playerId, action.relic);
+    case "RECRUIT_BOON_WITH_LV":
+      return recruitBoonWithLv(state, action.playerId, action.boonType);
+    case "BUY_DIE_UPGRADE":
+      return buyDieUpgrade(state, action.playerId);
+    case "BUY_LEOPARD_WARD":
+      return buyLeopardWard(state, action.playerId);
+    case "RESOLVE_CHALLENGE":
+      return resolveChallenge(state, action.accepted, action.success ?? false);
     case "TOGGLE_PLAYTEST":
       return addLog({ ...state, playtestMode: !state.playtestMode }, `Playtest Mode ${state.playtestMode ? "disabled" : "enabled"}.`);
     case "ADJUST_PLAYER":
@@ -156,19 +175,26 @@ export function reducer(state: GameState, action: GameAction): GameState {
       return markTile(state, state.leopard, action.desecrated);
     case "START_COLLECTIVE_RITE":
       return startCollectiveRite(state, "Playtest Mode triggers a Collective Rite.");
-    case "SET_RITE_CHOICE":
+    case "SET_RITE_CHOICE": {
+      const choices = state.collectiveRite?.choices ?? {};
+      if (choices[action.playerId]) return state;
       return {
         ...state,
         collectiveRite: {
-          choices: { ...(state.collectiveRite?.choices ?? {}), [action.playerId]: action.choice },
+          choices: { ...choices, [action.playerId]: action.choice },
         },
       };
+    }
     case "RESOLVE_COLLECTIVE_RITE":
       return resolveCollectiveRite(state);
+    case "DISMISS_RITE_REVEAL":
+      return { ...state, riteResolution: undefined };
     case "SET_GATE_COST":
       return addLog({ ...state, gateCosts: action.gate === 0 ? [action.cost, state.gateCosts[1]] : [state.gateCosts[0], action.cost] }, `Gate ${action.gate + 1} cost set to ${action.cost}.`);
     case "SET_LEOPARD_THRESHOLD":
       return addLog({ ...state, leopardLossThreshold: action.threshold }, `Leopard loss threshold set to ${action.threshold} altar visits.`);
+    case "SET_LEGENDARY_THRESHOLD":
+      return addLog({ ...state, legendaryVictoryThreshold: action.threshold }, `Legendary cult victory threshold set to ${action.threshold} LV.`);
     case "DISMISS_NOTIFICATION":
       return {
         ...state,
@@ -195,8 +221,8 @@ export function getTile(board: Tile[][], position: Position): Tile {
   return board[position.tier][position.index % board[position.tier].length];
 }
 
-export function divinity(player: Player): number {
-  return player.rv + player.lv;
+export function gatePower(player: Player): number {
+  return player.rv + player.lv * 2;
 }
 
 export function tierLength(tier: number): number {
@@ -222,6 +248,9 @@ function newGame(playerCount: number, names: string[], aiPlayers: boolean[], sac
     rv: 0,
     lv: 0,
     gatesPaid: 0,
+    movementDie: 4,
+    leopardWard: false,
+    aiPersonality: aiPlayers[index] ? AI_PERSONALITIES[index % AI_PERSONALITIES.length] : undefined,
   }));
 
   return {
@@ -233,6 +262,7 @@ function newGame(playerCount: number, names: string[], aiPlayers: boolean[], sac
     leopard: { ...START },
     leopardVisits: 0,
     leopardLossThreshold: DEFAULT_LEOPARD_LOSS_THRESHOLD,
+    legendaryVictoryThreshold: DEFAULT_LEGENDARY_VICTORY_THRESHOLD,
     gateCosts: [5, 7],
     pendingMove: 0,
     turnRolled: false,
@@ -242,6 +272,7 @@ function newGame(playerCount: number, names: string[], aiPlayers: boolean[], sac
     log: [
       logEntry(`${playerCount} sects enter the outer court with sacred items.`),
       ...players.map((player) => logEntry(`${player.name} carries the ${sacredItemName(player.sacredItem)}.`)),
+      ...players.filter((player) => player.isAI).map((player) => logEntry(`${player.name} follows the ${personalityName(player.aiPersonality)} AI path.`)),
       logEntry(`${players[0].name}'s turn begins${players[0].isAI ? " under AI control" : ""}.`),
     ],
   };
@@ -295,8 +326,9 @@ function runAiTurn(state: GameState): GameState {
   if (!aiPlayer?.isAI) return state;
   let next = state;
   if (!next.turnRolled) {
-    const roll = d(4);
-    next = addLog({ ...next, pendingMove: roll, turnRolled: true, lastRolls: { ...next.lastRolls, d4: roll } }, `${aiPlayer.name} AI rolls D4 = ${roll}.`);
+    const sides = aiPlayer.movementDie ?? 4;
+    const roll = d(sides);
+    next = addLog({ ...next, pendingMove: roll, turnRolled: true, lastRolls: { ...next.lastRolls, d4: roll } }, `${aiPlayer.name} AI rolls D${sides} = ${roll}.`);
   }
   let safety = 0;
   while (next.pendingMove > 0 && !next.gameOver && !next.collectiveRite && safety < 12) {
@@ -313,11 +345,21 @@ function chooseAiDirection(state: GameState): Direction {
   const gateIndex = gateIndexForTier(state, player.position.tier);
   const cost = gateCostForTier(state, player.position.tier);
 
-  if (gateIndex >= 0 && (player.position.tier === INNER_TIER || divinity(player) >= cost || player.gatesPaid >= player.position.tier + 1)) {
+  if (player.aiPersonality === "martyr" && !isAdjacent(player.position, state.leopard)) {
+    return directionToward(player.position.index, mapIndex(state.leopard.index, tierLength(state.leopard.tier), length), length);
+  }
+
+  if (player.aiPersonality === "trickster") {
+    const eventTile = state.board[player.position.tier].find((tile) => tile.type === "event");
+    if (eventTile) return directionToward(player.position.index, eventTile.index, length);
+  }
+
+  if (gateIndex >= 0 && (player.aiPersonality === "pilgrim" || player.position.tier === INNER_TIER || gatePower(player) >= cost || player.gatesPaid >= player.position.tier + 1)) {
     return directionToward(player.position.index, gateIndex, length);
   }
 
   const target =
+    (player.aiPersonality === "steward" ? state.board[player.position.tier].find((tile) => tile.desecrated)?.index : undefined) ??
     state.board[player.position.tier].find((tile) => tile.hasRV && !tile.desecrated)?.index ??
     state.board[player.position.tier].find((tile) => tile.desecrated)?.index ??
     gateIndex;
@@ -346,6 +388,7 @@ function finishTurn(state: GameState): GameState {
         uses: { ...p.uses, oliveIdolRound: false, oliveBranchRound: false },
       })),
     };
+    next = addLog(rotateSecondTier(next, 1), "A new round begins; the second tier rotates 1 tile clockwise.");
   }
   return addLog(next, `${nextPlayer.name}'s turn begins${nextPlayer.isAI ? " under AI control" : ""}.`);
 }
@@ -379,6 +422,19 @@ function cleanseCurrentTile(state: GameState): GameState {
   if (!tile.desecrated) return addLog(state, `${player.name}'s tile is already cleansed.`);
   let next = markTile(state, player.position, false, true);
   next = gainLv(next, player.id, 1, `${player.name} cleanses desecration and gains 1 LV.`);
+  if (!player.isAI) {
+    next = beginChallenge(next, {
+      id: challengeId("cleansing"),
+      playerId: player.id,
+      source: "cleansing",
+      kind: "snake",
+      safeRv: 0,
+      successRv: 1,
+      failureRv: -1,
+      title: "Gather the Offerings",
+      body: "The cleansed tile reveals scattered offerings. Take the certain cleansing, or gather all three offerings for +1 RV. Failure loses 1 RV.",
+    });
+  }
   return { ...next, pendingMove: 0, turnRolled: true };
 }
 
@@ -387,7 +443,7 @@ function attemptGate(state: GameState, playerId: string): GameState {
 
   if (player.position.tier === INNER_TIER) {
     if (player.gatesPaid >= PAID_GATES_TO_WIN) return advanceThroughGate(state, playerId, false);
-    return addLog(state, `${player.name} reached the altar gate but must pass both paid judgments first.`);
+    return addLog(state, `${player.name} reached the altar gate but must pass both paid gate judgments first.`);
   }
 
   const requiredGate = player.position.tier + 1;
@@ -400,10 +456,11 @@ function attemptGate(state: GameState, playerId: string): GameState {
     usedGatekeeper = true;
   }
 
-  if (divinity(player) < cost) return addLog(state, `${player.name} reached a gate but needs ${cost} Divinity Points to pass.`);
+  if (gatePower(player) < cost) return addLog(state, `${player.name} reached a gate but needs ${cost} Gate Power to pass.`);
 
-  const spentRv = Math.min(player.rv, cost);
-  const spentLv = cost - spentRv;
+  const payment = payGateCost(player, cost);
+  const spentRv = payment.rv;
+  const spentLv = payment.lv;
   let next = loseRv(state, playerId, spentRv, `${player.name} sacrifices ${spentRv} RV at the gate.`);
   next = updatePlayer(next, playerId, (p) => ({
     ...p,
@@ -411,7 +468,7 @@ function attemptGate(state: GameState, playerId: string): GameState {
     gatesPaid: Math.max(p.gatesPaid, requiredGate),
     uses: { ...p.uses, gatekeeperGame: p.uses.gatekeeperGame || usedGatekeeper },
   }));
-  if (spentLv > 0) next = addLog(next, `${player.name} spends ${spentLv} LV at the gate.`);
+  if (spentLv > 0) next = addLog(next, `${player.name} spends ${spentLv} LV as ${spentLv * 2} Gate Power.`);
   if (usedGatekeeper) next = addLog(next, `${player.name}'s Gatekeeper reduces the judgment by 2.`);
   if (spentRv > 0 && player.sacredItem === "temple-knife") {
     next = addLog({ ...next, pendingMove: next.pendingMove + 1 }, `${player.name}'s Temple Knife grants +1 movement after RV sacrifice.`);
@@ -442,10 +499,10 @@ function advanceThroughGate(state: GameState, playerId: string, paidNow: boolean
 
 function moveLeopardByRoll(state: GameState): GameState {
   const roll = d(10);
-  if (roll === 8 || roll === 9) {
+  if (roll === 7) {
     return addLog({ ...state, lastRolls: { ...state.lastRolls, d10: roll } }, `D10 = ${roll}. The leopard stalks the temple but does not move.`);
   }
-  const direction = roll <= 2 ? "cw" : roll <= 4 ? "ccw" : roll <= 7 ? "out" : "in";
+  const direction = roll <= 2 ? "cw" : roll <= 4 ? "ccw" : roll <= 6 ? "out" : "in";
   return moveLeopard(state, direction, `D10 = ${roll}.`, roll);
 }
 
@@ -454,7 +511,7 @@ function moveLeopardManually(state: GameState, direction: Direction | "in" | "ou
 }
 
 function moveLeopard(state: GameState, direction: Direction | "in" | "out" | "start", prefix: string, roll?: number): GameState {
-  const nextPosition = nudgePosition(state.leopard, direction);
+  let nextPosition = nudgePosition(state.leopard, direction);
   let next = { ...state, lastRolls: roll ? { ...state.lastRolls, d10: roll } : state.lastRolls };
   if (nextPosition.tier >= ALTAR_TIER) {
     const visits = next.leopardVisits + 1;
@@ -463,6 +520,15 @@ function moveLeopard(state: GameState, direction: Direction | "in" | "out" | "st
       ? addLog({ ...visited, gameOver: "leopard-win" }, "The leopard has become the sacred object. All players lose.")
       : visited;
   }
+
+  const firstTile = getTile(next.board, nextPosition);
+  if (firstTile.type === "gate") {
+    next = markTile(next, nextPosition, true);
+    const slipDirection: Direction = direction === "ccw" ? "ccw" : "cw";
+    nextPosition = nudgePosition(nextPosition, slipDirection);
+    next = addLog(next, `${prefix} The leopard crosses a gate, but the sacred threshold repels it onward.`);
+  }
+
   next = markTile({ ...next, leopard: nextPosition }, nextPosition, true);
   return checkLeopardEncounters(addLog(next, `${prefix} The leopard moves ${directionLabel(direction)} and desecrates tile ${nextPosition.index}.`));
 }
@@ -486,6 +552,17 @@ function checkLeopardEncounters(state: GameState): GameState {
     let lvGain = next.leopardVisits + 1 + (player.sacredItem === "funeral-mask" ? 1 : 0) + (player.relics.includes("leopard-tooth") ? 1 : 0);
 
     let noticeBody = "";
+    if (player.leopardWard) {
+      next = updatePlayer(next, playerId, (p) => ({ ...p, leopardWard: false }));
+      next = addLog(next, `${player.name}'s leopard ward breaks and prevents the encounter.`);
+      next = addNotification(next, {
+        title: `${player.name} resisted the leopard`,
+        body: "A purchased LV ward absorbed the leopard encounter. No RV was lost and the player stayed in place.",
+        kind: "info",
+      });
+      return;
+    }
+
     if (player.followers.length > 0 && baseLoss > 0) {
       const sacrificed = player.followers[0];
       next = removeBoon(next, playerId, "follower", sacrificed, false);
@@ -530,7 +607,7 @@ function resolveEvent(state: GameState, cardId: EventCardId): GameState {
         next = gainRv(next, player.id, 1, `${player.name} gains 1 RV from Cooperation.`);
         next = gainRv(next, partner.id, 1, `${partner.name} gains 1 RV from Cooperation.`);
         next = rotateSecondTier(next, -3);
-        next = addBoon(next, player.id, "follower", undefined, "Cooperation gathering witnesses");
+        if (Math.random() > 0.5) next = addBoon(next, player.id, "follower", undefined, "Cooperation gathering witnesses");
       } else next = addLog(next, "No rival stands on the same sacred level, so no swap occurs.");
       break;
     }
@@ -563,8 +640,28 @@ function resolveEvent(state: GameState, cardId: EventCardId): GameState {
       const roll = d(4);
       next = loseRv(next, player.id, n, `${player.name} loses all ${n} RV for Test of Faith.`, true);
       if (n >= roll) {
-        next = gainLv(next, player.id, n + 2, `${player.name} rolls ${roll} and gains ${n + 2} LV.`);
-        next = addBoon(next, player.id, "relic", undefined, "surviving Test of Faith");
+        const safeLv = 1;
+        const successLv = Math.min(2, Math.max(1, Math.ceil(n / 3)));
+        if (player.isAI) {
+          const success = Math.random() >= 0.45;
+          next = success
+            ? gainLv(next, player.id, successLv, `${player.name} survives Test of Faith and gains ${successLv} LV.`)
+            : loseLv(next, player.id, 1, `${player.name} fails the Test of Faith ordeal.`);
+          if (success) next = addBoon(next, player.id, "relic", undefined, "surviving Test of Faith");
+        } else {
+          next = beginChallenge(next, {
+            id: `test-faith-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            playerId: player.id,
+            source: "test-of-faith",
+            kind: "timing",
+            safeLv,
+            successLv,
+            failureLv: -1,
+            boonType: "relic",
+            title: "Test of Faith",
+            body: `${player.name} passed the first omen by rolling ${roll}. Take ${safeLv} LV safely, or attempt the omen challenge for ${successLv} LV and 1 Relic.`,
+          });
+        }
       } else next = addLog(next, `${player.name} rolls ${roll} and gains no LV.`);
       harmed = n > 0;
       break;
@@ -585,25 +682,66 @@ function resolveEvent(state: GameState, cardId: EventCardId): GameState {
     }
     case "sacrificial-rebirth":
       next = updatePlayer(next, player.id, (p) => ({ ...p, position: { ...START } }));
-      next = gainLv(next, player.id, next.leopardVisits + 1, `${player.name} is ritually devoured, loses no RV, and gains LV.`);
+      if (player.isAI) {
+        next = gainLv(next, player.id, next.leopardVisits + 1, `${player.name} is ritually devoured, loses no RV, and gains LV.`);
+        next = addBoon(next, player.id, "follower", undefined, "Sacrificial Rebirth");
+      } else {
+        const safeLv = 1;
+        next = beginChallenge(next, {
+          id: challengeId("leopard"),
+          playerId: player.id,
+          source: "leopard-encounter",
+          kind: "runner",
+          safeLv,
+          successLv: Math.min(2, next.leopardVisits + 1),
+          failureLv: -1,
+          boonType: "follower",
+          title: "Flight Through the Outer Court",
+          body: "The leopard has devoured the body, but the story can still outrun it. Take the certain rebirth or leap the shadow for extra LV and a Follower.",
+        });
+      }
       next = addNotification(next, {
         title: `${player.name} returned to Start`,
         body: "Sacrificial Rebirth moved the leopard to them. They were ritually devoured, lost no RV, and restarted with new LV.",
         kind: "return",
       });
-      next = addBoon(next, player.id, "follower", undefined, "Sacrificial Rebirth");
       break;
     case "gamble":
       next = resolveGamble(next);
-      next = addBoon(next, player.id, "relic", undefined, "Gamble of the Unfaithful");
+      if (player.isAI) {
+        next = addBoon(next, player.id, "relic", undefined, "Gamble of the Unfaithful");
+      } else {
+        next = beginChallenge(next, {
+          id: challengeId("gamble"),
+          playerId: player.id,
+          source: "gamble",
+          kind: "coin",
+          safeRv: 1,
+          successLv: 1,
+          failureLv: -1,
+          boonType: "relic",
+          title: "Cast the Lots",
+          body: "Choose Sun or Moon. Take +1 RV with certainty, or cast the lots for +1 LV and 1 Relic. Failure loses 1 LV.",
+        });
+      }
       break;
     case "trial-of-the-blind":
-      next = resolveTrial(next);
+      next = player.isAI ? resolveTrial(next) : beginChallenge(next, {
+        id: challengeId("trial"),
+        playerId: player.id,
+        source: "trial-of-the-blind",
+        kind: "memory",
+        safeLv: 1,
+        successLv: 2,
+        failureLv: -1,
+        title: "Recite the Rite",
+        body: "The blind trial becomes a sequence of sacred signs. Take +1 LV, or recite the rite for +2 LV. Failure loses 1 LV.",
+      });
       break;
     case "bound-faith":
       next = resolveBoundFaith(next);
       next.players.forEach((p) => {
-        if (Math.random() > 0.5) next = addBoon(next, p.id, "follower", undefined, "Rite of Bound Faith");
+        if (Math.random() > 0.75) next = addBoon(next, p.id, "follower", undefined, "Rite of Bound Faith");
       });
       break;
     default:
@@ -611,7 +749,7 @@ function resolveEvent(state: GameState, cardId: EventCardId): GameState {
   }
 
   if (harmed && player.relics.includes("ash-bowl")) next = gainLv(next, player.id, 1, `${player.name}'s Ash Bowl turns harm into +1 LV.`);
-  if (player.followers.includes("scribe")) next = gainLv(next, player.id, 1, `${player.name}'s Scribe records the event for +1 LV.`);
+  if (player.followers.includes("scribe")) next = gainRv(next, player.id, 1, `${player.name}'s Scribe records the event for +1 RV.`);
   next = rotateSecondTier(next, 1);
   next = addLog(next, "After divine intervention, the second tier rotates 1 tile clockwise.");
   if (player.sacredItem === "bronze-bell") {
@@ -654,7 +792,7 @@ function resolveTrial(state: GameState): GameState {
     });
     return next;
   }
-  return gainLv(state, player.id, rolls, `${player.name} stops the blind trial at ${y} against hidden total ${hidden}, gaining ${rolls} LV.`);
+  return gainLv(state, player.id, Math.min(2, rolls), `${player.name} stops the blind trial at ${y} against hidden total ${hidden}, gaining ${Math.min(2, rolls)} LV.`);
 }
 
 function resolveBoundFaith(state: GameState): GameState {
@@ -663,10 +801,81 @@ function resolveBoundFaith(state: GameState): GameState {
   const allSacrifice = choices.every((choice) => !choice.faith);
   let next = state;
   choices.forEach(({ player, faith }) => {
-    const gain = allFaith ? 3 : allSacrifice ? 0 : faith ? 1 : 2;
+    const gain = allFaith ? 2 : allSacrifice ? 0 : 1;
     if (gain > 0) next = gainRv(next, player.id, gain, `${player.name} gains ${gain} RV from Bound Faith.`);
   });
   return addLog(next, `Rite of Bound Faith resolves: ${allFaith ? "all Faith" : allSacrifice ? "all Sacrifice" : "mixed vows"}.`);
+}
+
+function recruitBoonWithLv(state: GameState, playerId: string, boonType: RitualBoonType): GameState {
+  const player = state.players.find((p) => p.id === playerId)!;
+  if (player.lv < 2) return addLog(state, `${player.name} needs 2 LV to recruit a ${boonType}.`);
+  if (state.currentPlayerIndex !== state.players.findIndex((p) => p.id === playerId)) {
+    return addLog(state, `${player.name} can only recruit with LV on their own turn.`);
+  }
+  if (!state.turnRolled) return addLog(state, `${player.name} must complete a turn action before recruiting with LV.`);
+  if (state.pendingMove > 0) return addLog(state, `${player.name} must finish movement before recruiting with LV.`);
+
+  const next = updatePlayer(state, playerId, (p) => ({ ...p, lv: p.lv - 2 }));
+  return addBoon(next, playerId, boonType, undefined, "legendary reputation");
+}
+
+function buyDieUpgrade(state: GameState, playerId: string): GameState {
+  const player = state.players.find((p) => p.id === playerId)!;
+  const currentDie = player.movementDie ?? 4;
+  if (currentDie >= 10) return addLog(state, `${player.name}'s movement die is already D10.`);
+  const cost = currentDie === 4 ? 3 : 5;
+  if (player.lv < cost) return addLog(state, `${player.name} needs ${cost} LV to upgrade movement.`);
+  const nextDie = currentDie === 4 ? 6 : 10;
+  return addLog(
+    updatePlayer(state, playerId, (p) => ({ ...p, lv: p.lv - cost, movementDie: nextDie })),
+    `${player.name} spends ${cost} LV to upgrade movement to D${nextDie}.`,
+  );
+}
+
+function buyLeopardWard(state: GameState, playerId: string): GameState {
+  const player = state.players.find((p) => p.id === playerId)!;
+  if (player.leopardWard) return addLog(state, `${player.name} already has a leopard ward.`);
+  if (player.lv < 2) return addLog(state, `${player.name} needs 2 LV to bind a leopard ward.`);
+  return addLog(
+    updatePlayer(state, playerId, (p) => ({ ...p, lv: p.lv - 2, leopardWard: true })),
+    `${player.name} spends 2 LV to bind a leopard ward.`,
+  );
+}
+
+function beginChallenge(state: GameState, challenge: PendingChallenge): GameState {
+  return addLog({ ...state, pendingChallenge: challenge }, `${playerName(state, challenge.playerId)} may attempt ${challenge.title} for a greater legend.`);
+}
+
+function resolveChallenge(state: GameState, accepted: boolean, success: boolean): GameState {
+  const challenge = state.pendingChallenge;
+  if (!challenge) return state;
+  let next: GameState = { ...state, pendingChallenge: undefined };
+  const player = next.players.find((p) => p.id === challenge.playerId)!;
+
+  if (!accepted) {
+    next = applyChallengeDelta(next, player.id, challenge.safeRv ?? 0, challenge.safeLv ?? 0, `${player.name} takes the certain sign.`);
+    return next;
+  }
+
+  if (!success) {
+    next = applyChallengeDelta(next, player.id, challenge.failureRv ?? 0, challenge.failureLv ?? -1, `${player.name} fails the ordeal.`);
+    return next;
+  }
+
+  next = applyChallengeDelta(next, player.id, challenge.successRv ?? 0, challenge.successLv ?? 0, `${player.name} succeeds at ${challenge.title}.`);
+  if (challenge.boonType) next = addBoon(next, player.id, challenge.boonType, undefined, `winning ${challenge.title}`);
+  return next;
+}
+
+function applyChallengeDelta(state: GameState, playerId: string, rv: number, lv: number, reason: string): GameState {
+  let next = state;
+  if (rv > 0) next = gainRv(next, playerId, rv, `${reason} +${rv} RV.`);
+  if (rv < 0) next = loseRv(next, playerId, Math.abs(rv), `${reason}`);
+  if (lv > 0) next = gainLv(next, playerId, lv, `${reason} +${lv} LV.`);
+  if (lv < 0) next = loseLv(next, playerId, Math.abs(lv), `${reason}`);
+  if (rv === 0 && lv === 0) next = addLog(next, `${reason} No extra reward.`);
+  return next;
 }
 
 function triggerSacredItem(state: GameState, playerId: string): GameState {
@@ -737,7 +946,18 @@ function resolveCollectiveRite(state: GameState): GameState {
   const values = state.players.map((player) => choices[player.id]);
   const allGive = values.every((choice) => choice === "give");
   const allWithhold = values.every((choice) => choice === "withhold");
-  let next: GameState = { ...state, collectiveRite: undefined };
+  const outcome = allGive ? "all-give" : allWithhold ? "all-withhold" : "mixed";
+  const summary =
+    outcome === "all-give"
+      ? "All sects gave. The outer ring refills and everyone gains +1 LV."
+      : outcome === "all-withhold"
+        ? "All sects withheld. The leopard surges inward once."
+        : "The rite divided. Give sects gain +1 RV; Withhold sects gain +1 LV.";
+  const reveal = state.players.map((player) => `${player.name}: ${choices[player.id] === "give" ? "Give" : "Withhold"}`).join(", ");
+  let next: GameState = addLog(
+    { ...state, collectiveRite: undefined, riteResolution: { choices, outcome, summary } },
+    `Collective Rite choices revealed: ${reveal}.`,
+  );
   if (allGive) {
     next = refillOuter(next);
     next.players.forEach((p) => {
@@ -810,6 +1030,7 @@ function gainRv(state: GameState, playerId: string, amount: number, reason: stri
 function gainLv(state: GameState, playerId: string, amount: number, reason: string): GameState {
   let next = amount > 0 ? updatePlayer(state, playerId, (p) => ({ ...p, lv: p.lv + amount })) : state;
   next = addLog(next, reason);
+  if (amount > 0) next = checkCultTitle(next, playerId);
   const player = next.players.find((p) => p.id === playerId)!;
   if (amount > 0) {
     next.players
@@ -818,7 +1039,30 @@ function gainLv(state: GameState, playerId: string, amount: number, reason: stri
         next = gainRv(next, witness.id, 1, `${witness.name}'s Witness interprets ${player.name}'s LV gain and grants +1 RV.`);
       });
   }
-  return next;
+  return checkLegendaryVictory(next, playerId);
+}
+
+function checkCultTitle(state: GameState, playerId: string): GameState {
+  const player = state.players.find((p) => p.id === playerId)!;
+  const title = cultTitleForLv(player.lv);
+  if (!title || (player.uses.cultTitleLevel ?? 0) >= title.level) return state;
+  let next = updatePlayer(state, playerId, (p) => ({ ...p, uses: { ...p.uses, cultTitleLevel: title.level } }));
+  next = addLog(next, `${player.name} becomes ${title.name}: ${title.text}`);
+  return addNotification(next, {
+    title: `${player.name}: ${title.name}`,
+    body: title.text,
+    kind: "info",
+  });
+}
+
+function checkLegendaryVictory(state: GameState, playerId: string): GameState {
+  if (state.gameOver) return state;
+  const player = state.players.find((p) => p.id === playerId)!;
+  if (player.lv < state.legendaryVictoryThreshold) return state;
+  return addLog(
+    { ...state, gameOver: "legend-win", winnerId: playerId },
+    `${player.name}'s legend reaches ${player.lv} LV. Their cult eclipses the temple struggle.`,
+  );
 }
 
 function loseRv(state: GameState, playerId: string, amount: number, reason: string, _eventHarm = false): GameState {
@@ -829,6 +1073,16 @@ function loseRv(state: GameState, playerId: string, amount: number, reason: stri
   next = addLog(next, `${reason} ${actual} RV lost.`);
   if (actual > 0 && player.relics.includes("cracked-chalice")) next = gainLv(next, playerId, 1, `${player.name}'s Cracked Chalice turns lost RV into +1 LV.`);
   return next;
+}
+
+function loseLv(state: GameState, playerId: string, amount: number, reason: string): GameState {
+  if (amount <= 0) return addLog(state, reason);
+  const player = state.players.find((p) => p.id === playerId)!;
+  const actual = Math.min(player.lv, amount);
+  return addLog(
+    updatePlayer(state, playerId, (p) => ({ ...p, lv: Math.max(0, p.lv - actual) })),
+    `${reason} ${actual} LV lost.`,
+  );
 }
 
 function markTile(state: GameState, position: Position, desecrated: boolean, hasRV?: boolean): GameState {
@@ -911,6 +1165,12 @@ function gateCostForTier(state: GameState, tier: number): number {
   return tier <= 0 ? state.gateCosts[0] : state.gateCosts[1];
 }
 
+function payGateCost(player: Player, cost: number): { rv: number; lv: number } {
+  const rv = Math.min(player.rv, cost);
+  const remaining = Math.max(0, cost - rv);
+  return { rv, lv: Math.ceil(remaining / 2) };
+}
+
 function distanceOnRing(a: number, b: number, len: number): number {
   const raw = Math.abs(a - b);
   return Math.min(raw, len - raw);
@@ -934,6 +1194,10 @@ function randomRelic(): RelicId {
 
 function d(sides: number): number {
   return Math.floor(Math.random() * sides) + 1;
+}
+
+function challengeId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function removeOne<T>(list: T[], item: T): T[] {
@@ -987,4 +1251,20 @@ function tierName(tier: number): string {
   if (tier === 1) return "the middle level";
   if (tier === 2) return "the inner level";
   return "the altar";
+}
+
+function cultTitleForLv(lv: number): { level: number; name: string; text: string } | undefined {
+  if (lv >= 15) return { level: 15, name: "Eclipsing Faith", text: "Their cult can now rival the meaning of the altar itself." };
+  if (lv >= 10) return { level: 10, name: "Living Myth", text: "Their ordeals are now repeated as sacred story." };
+  if (lv >= 6) return { level: 6, name: "Marked Cult", text: "Followers begin reading every accident as a sign." };
+  if (lv >= 3) return { level: 3, name: "Whispered Sect", text: "Their name starts circulating beyond the outer court." };
+  return undefined;
+}
+
+function personalityName(personality?: Player["aiPersonality"]): string {
+  if (personality === "pilgrim") return "Pilgrim";
+  if (personality === "martyr") return "Martyr";
+  if (personality === "steward") return "Steward";
+  if (personality === "trickster") return "Trickster";
+  return "Rival";
 }

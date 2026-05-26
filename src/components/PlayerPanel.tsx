@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Minus, Plus } from "lucide-react";
-import { divinity, GameAction } from "../game";
+import { GameAction, gatePower } from "../game";
 import { FOLLOWERS, RELICS, SACRED_ITEMS, followerName, relicName, sacredItemName } from "../data/ritual";
 import { FollowerId, GameState, RelicId, SacredItemId } from "../types";
 import RitualArt from "./RitualArt";
@@ -28,15 +28,26 @@ export default function PlayerPanel({ state, dispatch }: PlayerPanelProps) {
                 <h3>{player.name}</h3>
                 <p>
                   <span className={`role-badge ${player.isAI ? "ai" : "human"}`}>{player.isAI ? "AI" : "Human"}</span>
+                  {player.aiPersonality && <span>{personalityName(player.aiPersonality)}</span>}
                   <span>Tier {player.position.tier + 1}, tile {player.position.index}</span>
-                  <span>Judgments {player.gatesPaid}/2</span>
+                  <span>
+                    Gate judgments {player.gatesPaid}/2
+                    <HelpTooltip label={`${player.name} gate judgments help`}>
+                      <strong>Gate judgments</strong>
+                      <span>Each sect must pass two sacred boundaries before it can win at the altar. This tracks how many gate costs this sect has already paid.</span>
+                      <span>If a sect is sent back to Start, paid judgments stay paid.</span>
+                    </HelpTooltip>
+                  </span>
+                  <span>D{player.movementDie ?? 4}</span>
+                  {player.leopardWard && <span>Ward</span>}
+                  {cultTitle(player.lv) && <span>{cultTitle(player.lv)}</span>}
                 </p>
               </div>
             </div>
             <div className="stat-grid">
               <span>RV <strong>{player.rv}</strong></span>
               <span>LV <strong>{player.lv}</strong></span>
-              <span>Divinity <strong>{divinity(player)}</strong></span>
+              <span>Gate Power <strong>{gatePower(player)}</strong></span>
             </div>
             <div className="identity-stack">
               <div className="identity-row sacred-row">
@@ -125,6 +136,34 @@ export default function PlayerPanel({ state, dispatch }: PlayerPanelProps) {
               {player.relics.includes("bronze-mirror") && (
                 <button onClick={() => dispatch({ type: "TRIGGER_RELIC", playerId: player.id, relic: "bronze-mirror" })}>Bronze Mirror</button>
               )}
+              {index === state.currentPlayerIndex && !player.isAI && (
+                <>
+                  <button
+                    disabled={Boolean(state.gameOver) || !state.turnRolled || player.lv < 2 || state.pendingMove > 0}
+                    onClick={() => dispatch({ type: "RECRUIT_BOON_WITH_LV", playerId: player.id, boonType: "follower" })}
+                  >
+                    Recruit Follower -2 LV
+                  </button>
+                  <button
+                    disabled={Boolean(state.gameOver) || !state.turnRolled || player.lv < 2 || state.pendingMove > 0}
+                    onClick={() => dispatch({ type: "RECRUIT_BOON_WITH_LV", playerId: player.id, boonType: "relic" })}
+                  >
+                    Claim Relic -2 LV
+                  </button>
+                  <button
+                    disabled={Boolean(state.gameOver) || player.lv < ((player.movementDie ?? 4) === 4 ? 3 : 5) || (player.movementDie ?? 4) >= 10}
+                    onClick={() => dispatch({ type: "BUY_DIE_UPGRADE", playerId: player.id })}
+                  >
+                    Upgrade Die -{(player.movementDie ?? 4) === 4 ? 3 : 5} LV
+                  </button>
+                  <button
+                    disabled={Boolean(state.gameOver) || player.lv < 2 || player.leopardWard}
+                    onClick={() => dispatch({ type: "BUY_LEOPARD_WARD", playerId: player.id })}
+                  >
+                    Leopard Ward -2 LV
+                  </button>
+                </>
+              )}
             </div>
 
             {state.playtestMode && (
@@ -199,4 +238,20 @@ export default function PlayerPanel({ state, dispatch }: PlayerPanelProps) {
       </div>
     </section>
   );
+}
+
+function cultTitle(lv: number): string | undefined {
+  if (lv >= 15) return "Eclipsing Faith";
+  if (lv >= 10) return "Living Myth";
+  if (lv >= 6) return "Marked Cult";
+  if (lv >= 3) return "Whispered Sect";
+  return undefined;
+}
+
+function personalityName(personality: string): string {
+  if (personality === "pilgrim") return "Pilgrim";
+  if (personality === "martyr") return "Martyr";
+  if (personality === "steward") return "Steward";
+  if (personality === "trickster") return "Trickster";
+  return "Rival";
 }

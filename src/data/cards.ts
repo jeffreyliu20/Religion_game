@@ -45,8 +45,8 @@ export const EVENT_CARDS: EventCard[] = [
     rules: [
       "Current player loses all RV, call this n.",
       "Roll D4.",
-      "If n >= D4 result, gain n + 2 LV. Otherwise gain nothing.",
-      "If successful, gain 1 Relic.",
+      "If n >= D4 result, choose safe LV or attempt an omen challenge.",
+      "Safe: gain 1 LV. Challenge success: gain up to 2 LV and 1 Relic. Failure: lose 1 LV.",
     ],
     flavor:
       "Only when all is lost can the gods decide what was worth keeping.",
@@ -80,7 +80,7 @@ export const EVENT_CARDS: EventCard[] = [
       "Roll D4. Matching players gain +1 LV.",
       "Non-matching players may retry. Matching retry players gain +2 LV.",
       "Still non-matching retry players lose 2 LV if possible, otherwise 2 RV.",
-      "Current player gains 1 Relic after resolution.",
+      "Human current player may Cast the Lots for +1 LV and 1 Relic. Failure loses 1 LV.",
     ],
     flavor:
       "Those who doubt the gods must wager with them-and pay in certainty.",
@@ -91,7 +91,7 @@ export const EVENT_CARDS: EventCard[] = [
     rules: [
       "Other players secretly roll D4; sum hidden total X.",
       "Current player rolls D4 any number of times, accumulating sum Y.",
-      "Stopping before exceeding X grants LV equal to rolls. Exceeding X grants no LV, costs 2 RV, and gives all other players 2 RV.",
+      "Human current player may Recite the Rite for +2 LV, or take +1 LV safely. Failure loses 1 LV.",
     ],
     flavor:
       "Faith walks forward without seeing, and is judged by what it dares to risk.",
@@ -101,9 +101,9 @@ export const EVENT_CARDS: EventCard[] = [
     title: "Rite of Bound Faith",
     rules: [
       "Each player secretly chooses Faith or Sacrifice.",
-      "All Faith: everyone gains +3 RV.",
+      "All Faith: everyone gains +2 RV.",
       "All Sacrifice: everyone gains 0.",
-      "Mixed: Faith gains +1 RV; Sacrifice gains +2 RV.",
+      "Mixed: everyone gains +1 RV.",
     ],
     flavor:
       "Alone, belief falters. Together, it binds-or breaks-all who partake.",

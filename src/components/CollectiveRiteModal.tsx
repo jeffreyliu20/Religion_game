@@ -8,6 +8,32 @@ type Props = {
 };
 
 export default function CollectiveRiteModal({ state, dispatch }: Props) {
+  if (state.riteResolution) {
+    const resolution = state.riteResolution;
+    return (
+      <div className="modal-backdrop">
+        <section className="modal-panel">
+          <p className="eyebrow">Collective Rite Revealed</p>
+          <h2>{outcomeTitle(resolution.outcome)}</h2>
+          <p>{resolution.summary}</p>
+          <div className="rite-choice-list">
+            {state.players.map((player) => (
+              <div key={player.id} className="rite-choice-row revealed-choice-row">
+                <strong>{player.name}</strong>
+                <span className={`revealed-choice ${resolution.choices[player.id]}`}>
+                  {resolution.choices[player.id] === "give" ? "Give" : "Withhold"}
+                </span>
+              </div>
+            ))}
+          </div>
+          <button className="primary-button full-width" onClick={() => dispatch({ type: "DISMISS_RITE_REVEAL" })}>
+            Close Rite
+          </button>
+        </section>
+      </div>
+    );
+  }
+
   const choices = state.collectiveRite?.choices ?? {};
   const ready = state.players.every((player) => choices[player.id]);
 
@@ -27,29 +53,30 @@ export default function CollectiveRiteModal({ state, dispatch }: Props) {
           </HelpTooltip>
         </h2>
         <p>
-          Each sect chooses Give or Withhold. AI rivals have already made hidden choices; human players can
-          set theirs here for playtest speed.
+          Each sect secretly chooses Give or Withhold. AI rivals have already locked hidden choices; human
+          choices are hidden after they are locked and revealed only when the rite resolves.
         </p>
         <div className="rite-choice-list">
-          {state.players.map((player) => (
-            <div key={player.id} className="rite-choice-row">
-              <strong>{player.name}</strong>
-              <div>
-                <button
-                  className={choices[player.id] === "give" ? "primary-button" : ""}
-                  onClick={() => dispatch({ type: "SET_RITE_CHOICE", playerId: player.id, choice: "give" })}
-                >
-                  Give
-                </button>
-                <button
-                  className={choices[player.id] === "withhold" ? "primary-button" : ""}
-                  onClick={() => dispatch({ type: "SET_RITE_CHOICE", playerId: player.id, choice: "withhold" })}
-                >
-                  Withhold
-                </button>
+          {state.players.map((player) => {
+            const choiceLocked = Boolean(choices[player.id]);
+            return (
+              <div key={player.id} className="rite-choice-row">
+                <strong>{player.name}</strong>
+                {choiceLocked ? (
+                  <span className="locked-choice">{player.isAI ? "AI choice hidden" : "Choice locked"}</span>
+                ) : (
+                  <div>
+                    <button onClick={() => dispatch({ type: "SET_RITE_CHOICE", playerId: player.id, choice: "give" })}>
+                      Give
+                    </button>
+                    <button onClick={() => dispatch({ type: "SET_RITE_CHOICE", playerId: player.id, choice: "withhold" })}>
+                      Withhold
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <button className="primary-button full-width" disabled={!ready} onClick={() => dispatch({ type: "RESOLVE_COLLECTIVE_RITE" })}>
           Resolve Rite
@@ -57,4 +84,10 @@ export default function CollectiveRiteModal({ state, dispatch }: Props) {
       </section>
     </div>
   );
+}
+
+function outcomeTitle(outcome: "all-give" | "mixed" | "all-withhold"): string {
+  if (outcome === "all-give") return "The temple is sustained";
+  if (outcome === "all-withhold") return "The temple is abandoned";
+  return "The rite divides";
 }

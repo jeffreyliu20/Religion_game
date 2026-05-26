@@ -855,7 +855,7 @@ label {
   font-size: 0.76rem;
 }
 
-.player-heading p span {
+.player-heading p > span {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
@@ -1019,6 +1019,38 @@ label {
   gap: 0.4rem;
 }
 
+.locked-choice {
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f5f5a;
+  font-size: 0.8rem;
+  font-weight: 900;
+  padding: 0.25rem 0.55rem;
+}
+
+.revealed-choice-row {
+  background: rgba(255, 248, 224, 0.68);
+}
+
+.revealed-choice {
+  min-width: 6.4rem;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.revealed-choice.give {
+  background: rgba(15, 118, 110, 0.14);
+  color: #0f5f5a;
+}
+
+.revealed-choice.withhold {
+  background: rgba(91, 43, 121, 0.14);
+  color: #5b2b79;
+}
+
 .discard-list button {
   display: grid;
   justify-items: start;
@@ -1028,6 +1060,154 @@ label {
 .discard-list span {
   color: #5f4930;
   font-size: 0.82rem;
+}
+
+.challenge-panel {
+  width: min(620px, 100%);
+}
+
+.tutorial-box {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.95rem 0;
+  border: 1px solid rgba(15, 118, 110, 0.22);
+  border-radius: 8px;
+  background: rgba(15, 118, 110, 0.08);
+  padding: 0.8rem;
+  color: #49351e;
+  line-height: 1.4;
+}
+
+.tutorial-box strong {
+  color: #0f5f5a;
+  font-size: 0.95rem;
+}
+
+.tutorial-box span {
+  display: block;
+}
+
+.omen-meter {
+  position: relative;
+  height: 2rem;
+  margin: 1rem 0 0.4rem;
+  overflow: hidden;
+  border: 1px solid rgba(64, 43, 21, 0.24);
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(60, 44, 20, 0.1), rgba(255, 248, 224, 0.7), rgba(60, 44, 20, 0.1)),
+    #eadcb9;
+}
+
+.omen-target {
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.36);
+}
+
+.omen-marker {
+  position: absolute;
+  top: -0.15rem;
+  bottom: -0.15rem;
+  width: 0.32rem;
+  border-radius: 999px;
+  background: #5b2b79;
+  box-shadow: 0 0 0 3px rgba(255, 247, 228, 0.84), 0 8px 18px rgba(35, 22, 9, 0.25);
+  transform: translateX(-50%);
+}
+
+.challenge-readout {
+  color: #5f4930;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.challenge-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.9rem;
+}
+
+.coin-ordeal,
+.memory-buttons,
+.snake-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.8rem;
+}
+
+.coin-ordeal button {
+  flex: 1 1 120px;
+  min-height: 4.2rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.memory-sequence {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0.95rem 0 0.65rem;
+}
+
+.memory-sequence span {
+  border: 1px solid rgba(64, 43, 21, 0.22);
+  border-radius: 8px;
+  background: rgba(15, 118, 110, 0.1);
+  padding: 0.65rem;
+  text-align: center;
+  font-weight: 900;
+}
+
+.runner-track {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 0.35rem;
+  margin: 1rem 0 0.45rem;
+}
+
+.runner-track span,
+.snake-grid span {
+  display: grid;
+  place-items: center;
+  min-height: 2.2rem;
+  border: 1px solid rgba(64, 43, 21, 0.16);
+  border-radius: 8px;
+  background: rgba(116, 83, 36, 0.08);
+  font-weight: 900;
+}
+
+.runner-priest {
+  background: rgba(15, 118, 110, 0.22) !important;
+  color: #0f5f5a;
+}
+
+.runner-hazard {
+  background: rgba(91, 43, 121, 0.18) !important;
+  color: #5b2b79;
+}
+
+.snake-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.25rem;
+  margin-top: 0.9rem;
+}
+
+.snake-head {
+  background: rgba(15, 118, 110, 0.24) !important;
+  color: #0f5f5a;
+}
+
+.snake-offering {
+  background: rgba(217, 119, 6, 0.22) !important;
+  color: #7a4200;
 }
 
 .player-tools button {
@@ -1042,6 +1222,37 @@ label {
 
 .specific-card-row select {
   flex: 1 1 170px;
+}
+
+.end-recap {
+  border-color: rgba(15, 118, 110, 0.25);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(15, 118, 110, 0.12), transparent 28%),
+    #fff6df;
+}
+
+.end-recap p {
+  margin: 0 0 0.75rem;
+  color: #4a351d;
+  line-height: 1.45;
+}
+
+.recap-grid {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.recap-grid div {
+  display: grid;
+  gap: 0.15rem;
+  border-radius: 8px;
+  background: rgba(116, 83, 36, 0.09);
+  padding: 0.55rem;
+}
+
+.recap-grid span {
+  color: #5f4930;
+  font-size: 0.82rem;
 }
 
 .event-card {

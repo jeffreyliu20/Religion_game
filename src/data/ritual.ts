@@ -19,7 +19,7 @@ export const FOLLOWERS: RitualOption<FollowerId>[] = [
   { id: "acolyte", name: "Acolyte", text: "Once per turn, when you gain RV, gain +1 extra RV." },
   { id: "witness", name: "Witness", text: "When another player on your tier gains LV, gain +1 RV." },
   { id: "mourner", name: "Mourner", text: "When eaten by the leopard, lose 1 less RV." },
-  { id: "scribe", name: "Scribe", text: "When you resolve an event card, gain +1 LV." },
+  { id: "scribe", name: "Scribe", text: "When you resolve an event card, gain +1 RV." },
   { id: "gatekeeper", name: "Gatekeeper", text: "Once per game, reduce a gate cost by 2." },
   { id: "oracle", name: "Oracle", text: "Once per turn, reroll movement, but keep the second result." },
 ];

@@ -67,7 +67,7 @@ export default function Board({ state, dispatch }: BoardProps) {
           <strong>Turn flow</strong>
           <span>Roll D4 once, spend movement or cleanse, then End Turn.</span>
           <strong>Leopard D10</strong>
-          <span>1-2 clockwise, 3-4 counterclockwise, 5-7 outward, 8-9 stalks, 10 inward.</span>
+          <span>1-2 clockwise, 3-4 counterclockwise, 5-6 outward, 7 stalks, 8-10 inward.</span>
           <strong>Encounter limit</strong>
           <span>The leopard eats at most one unprotected adjacent sect each movement.</span>
         </HelpTooltip>
@@ -176,6 +176,15 @@ export default function Board({ state, dispatch }: BoardProps) {
               min={1}
               value={state.leopardLossThreshold}
               onChange={(event) => dispatch({ type: "SET_LEOPARD_THRESHOLD", threshold: Number(event.target.value) })}
+            />
+          </label>
+          <label className="mini-control">
+            Legend Win
+            <input
+              type="number"
+              min={1}
+              value={state.legendaryVictoryThreshold}
+              onChange={(event) => dispatch({ type: "SET_LEGENDARY_THRESHOLD", threshold: Number(event.target.value) })}
             />
           </label>
         </div>

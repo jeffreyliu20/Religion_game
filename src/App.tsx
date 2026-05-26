@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer } from "react";
 import { RotateCcw } from "lucide-react";
-import { BALANCE_VERSION, DEFAULT_LEOPARD_LOSS_THRESHOLD, reducer, emptyState } from "./game";
+import { BALANCE_VERSION, DEFAULT_LEGENDARY_VICTORY_THRESHOLD, DEFAULT_LEOPARD_LOSS_THRESHOLD, reducer, emptyState } from "./game";
 import Board from "./components/Board";
 import EventDeck from "./components/EventDeck";
 import GameLog from "./components/GameLog";
@@ -8,12 +8,15 @@ import PlayerPanel from "./components/PlayerPanel";
 import RulesPanel from "./components/RulesPanel";
 import SetupPanel from "./components/SetupPanel";
 import TurnPrompt from "./components/TurnPrompt";
-import { GameState } from "./types";
+import { AiPersonality, GameState } from "./types";
 import CollectiveRiteModal from "./components/CollectiveRiteModal";
 import DiscardBoonModal from "./components/DiscardBoonModal";
 import Notifications from "./components/Notifications";
+import ChallengeModal from "./components/ChallengeModal";
+import EndGameRecap from "./components/EndGameRecap";
 
 const STORAGE_KEY = "gaming-the-gods-state";
+const AI_PERSONALITIES: AiPersonality[] = ["pilgrim", "martyr", "steward", "trickster"];
 
 function loadState(): GameState {
   const saved = localStorage.getItem(STORAGE_KEY);
@@ -30,15 +33,22 @@ function loadState(): GameState {
       parsed.collectiveRite || (parsed.gameOver === "leopard-win" && (parsed.leopardVisits ?? 0) < leopardLossThreshold)
         ? undefined
         : parsed.gameOver;
+    const legendaryVictoryThreshold =
+      savedBalanceVersion < BALANCE_VERSION && (parsed.legendaryVictoryThreshold ?? 15) === 18
+        ? DEFAULT_LEGENDARY_VICTORY_THRESHOLD
+        : parsed.legendaryVictoryThreshold ?? DEFAULT_LEGENDARY_VICTORY_THRESHOLD;
+    const legendWinner = !gameOver ? parsed.players.find((player) => player.lv >= legendaryVictoryThreshold) : undefined;
     return {
       ...parsed,
       balanceVersion: BALANCE_VERSION,
       leopardLossThreshold,
-      gameOver,
-      winnerId: gameOver ? parsed.winnerId : undefined,
+      legendaryVictoryThreshold,
+      gameOver: legendWinner ? "legend-win" : gameOver,
+      winnerId: legendWinner ? legendWinner.id : gameOver ? parsed.winnerId : undefined,
       gateCosts: parsed.gateCosts ?? [5, 7],
       turnRolled: parsed.turnRolled ?? (parsed.pendingMove ?? 0) > 0,
       notifications: parsed.notifications ?? [],
+      pendingChallenge: parsed.pendingChallenge?.kind ? parsed.pendingChallenge : undefined,
       board: parsed.board.map((tier) => tier.map((tile) => ({ ...tile, desecrated: tile.desecrated ?? false }))),
       players: parsed.players.map((player, index) => ({
         ...player,
@@ -48,6 +58,9 @@ function loadState(): GameState {
         relics: player.relics ?? [],
         enteredTiers: player.enteredTiers ?? [player.position?.tier ?? 0],
         uses: player.uses ?? {},
+        movementDie: player.movementDie ?? 4,
+        leopardWard: player.leopardWard ?? false,
+        aiPersonality: player.aiPersonality ?? (player.isAI ? AI_PERSONALITIES[index % AI_PERSONALITIES.length] : undefined),
       })),
     };
   } catch {
@@ -67,10 +80,10 @@ export default function App() {
   }, [state]);
 
   useEffect(() => {
-    if (!state.setupComplete || state.gameOver || state.collectiveRite || state.pendingDiscard || !currentPlayer?.isAI) return;
+    if (!state.setupComplete || state.gameOver || state.collectiveRite || state.riteResolution || state.pendingDiscard || state.pendingChallenge || !currentPlayer?.isAI) return;
     const timeout = window.setTimeout(() => dispatch({ type: "AI_TURN" }), 850);
     return () => window.clearTimeout(timeout);
-  }, [state.setupComplete, state.gameOver, state.collectiveRite, state.pendingDiscard, state.currentPlayerIndex, state.log.length, currentPlayer?.isAI]);
+  }, [state.setupComplete, state.gameOver, state.collectiveRite, state.riteResolution, state.pendingDiscard, state.pendingChallenge, state.currentPlayerIndex, state.log.length, currentPlayer?.isAI]);
 
   return (
     <main className="app-shell">
@@ -109,6 +122,10 @@ export default function App() {
               <strong>{state.leopardVisits}/{state.leopardLossThreshold}</strong>
             </div>
             <div>
+              <span>Legend Victory</span>
+              <strong>{state.legendaryVictoryThreshold} LV</strong>
+            </div>
+            <div>
               <span>Gate Costs</span>
               <strong>{state.gateCosts[0]} / {state.gateCosts[1]}</strong>
             </div>
@@ -122,12 +139,15 @@ export default function App() {
             <section className={`end-banner ${state.gameOver}`}>
               {state.gameOver === "players-win"
                 ? `${state.players.find((player) => player.id === state.winnerId)?.name} wins at the altar.`
-                : "Collective loss: the leopard becomes the sacred object."}
+                : state.gameOver === "legend-win"
+                  ? `${state.players.find((player) => player.id === state.winnerId)?.name}'s cult eclipses all others.`
+                  : "Collective loss: the leopard becomes the sacred object."}
             </section>
           )}
 
           <TurnPrompt state={state} />
           <Notifications notifications={state.notifications} dispatch={dispatch} />
+          <EndGameRecap state={state} />
 
           <div className="workspace-grid">
             <section className="board-zone">
@@ -140,7 +160,8 @@ export default function App() {
               <GameLog entries={state.log} />
             </aside>
           </div>
-          {state.collectiveRite && <CollectiveRiteModal state={state} dispatch={dispatch} />}
+          {state.pendingChallenge && <ChallengeModal state={state} dispatch={dispatch} />}
+          {(state.collectiveRite || state.riteResolution) && <CollectiveRiteModal state={state} dispatch={dispatch} />}
           {state.pendingDiscard && <DiscardBoonModal state={state} dispatch={dispatch} />}
         </>
       )}

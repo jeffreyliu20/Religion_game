@@ -48,7 +48,10 @@ export type RitualUseFlags = {
   oliveBranchRound?: boolean;
   gatekeeperGame?: boolean;
   bronzeMirrorGame?: boolean;
+  cultTitleLevel?: number;
 };
+
+export type AiPersonality = "pilgrim" | "martyr" | "steward" | "trickster";
 
 export type Player = {
   id: string;
@@ -64,6 +67,9 @@ export type Player = {
   rv: number;
   lv: number;
   gatesPaid: number;
+  movementDie: 4 | 6 | 10;
+  leopardWard: boolean;
+  aiPersonality?: AiPersonality;
 };
 
 export type EventCardId =
@@ -108,9 +114,31 @@ export type CollectiveRite = {
   choices: Record<string, CollectiveRiteChoice>;
 };
 
+export type CollectiveRiteResolution = {
+  choices: Record<string, CollectiveRiteChoice>;
+  outcome: "all-give" | "mixed" | "all-withhold";
+  summary: string;
+};
+
 export type PendingDiscard = {
   playerId: string;
   type: RitualBoonType;
+};
+
+export type PendingChallenge = {
+  id: string;
+  playerId: string;
+  source: "test-of-faith" | "gamble" | "trial-of-the-blind" | "leopard-encounter" | "cleansing";
+  kind: "timing" | "coin" | "memory" | "runner" | "snake";
+  safeLv?: number;
+  safeRv?: number;
+  successLv?: number;
+  successRv?: number;
+  failureLv?: number;
+  failureRv?: number;
+  boonType?: RitualBoonType;
+  title: string;
+  body: string;
 };
 
 export type GameState = {
@@ -122,15 +150,18 @@ export type GameState = {
   leopard: Position;
   leopardVisits: number;
   leopardLossThreshold: number;
+  legendaryVictoryThreshold: number;
   gateCosts: [number, number];
   pendingMove: number;
   turnRolled: boolean;
   lastRolls: LastRolls;
   lastCardId?: EventCardId;
   collectiveRite?: CollectiveRite;
+  riteResolution?: CollectiveRiteResolution;
   pendingDiscard?: PendingDiscard;
+  pendingChallenge?: PendingChallenge;
   playtestMode: boolean;
-  gameOver?: "players-win" | "leopard-win";
+  gameOver?: "players-win" | "legend-win" | "leopard-win";
   winnerId?: string;
   notifications: GameNotification[];
   log: GameLogEntry[];

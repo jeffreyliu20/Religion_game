@@ -1,5 +1,5 @@
 import { Bot, Crown, Footprints, ShieldQuestion } from "lucide-react";
-import { divinity, gateIndexForTier, getTile } from "../game";
+import { gateIndexForTier, gatePower, getTile } from "../game";
 import { GameState } from "../types";
 
 type TurnPromptProps = {
@@ -13,7 +13,7 @@ export default function TurnPrompt({ state }: TurnPromptProps) {
   const gateIndex = gateIndexForTier(state, player.position.tier);
   const hasGateToChase = gateIndex >= 0;
   const gateCost = player.position.tier === 0 ? state.gateCosts[0] : state.gateCosts[1];
-  const canPassGate = divinity(player) >= gateCost;
+  const canPassGate = gatePower(player) >= gateCost;
   const isInnerLevel = player.position.tier === 2;
   const currentTile = getTile(state.board, player.position);
 
@@ -25,6 +25,10 @@ export default function TurnPrompt({ state }: TurnPromptProps) {
     icon = <Crown size={20} />;
     title = "The altar has been claimed";
     body = "Start a new game or reset the current playtest to try another ritual path.";
+  } else if (state.gameOver === "legend-win") {
+    icon = <Crown size={20} />;
+    title = "A cult eclipses the temple";
+    body = `A sect reached ${state.legendaryVictoryThreshold} LV. Their story became more powerful than the altar race.`;
   } else if (state.gameOver === "leopard-win") {
     icon = <ShieldQuestion size={20} />;
     title = "The leopard has rewritten the ritual";
@@ -43,20 +47,20 @@ export default function TurnPrompt({ state }: TurnPromptProps) {
     icon = <Footprints size={20} />;
     title = `Spend ${state.pendingMove} movement`;
     body = isInnerLevel
-      ? `Move toward the inner altar gate at tile ${gateIndex}. If both judgments are passed, landing there wins.`
+      ? `Move toward the inner altar gate at tile ${gateIndex}. If both gate judgments are passed, landing there wins.`
       : canPassGate && hasGateToChase
-        ? `Move toward the gate at tile ${gateIndex}. Passing it automatically spends ${gateCost} Divinity Points, RV first.`
-        : `Gather RV, cleanse desecration, or land on a Divine tile. You need ${gateCost} Divinity Points to pass the next gate.`;
+        ? `Move toward the gate at tile ${gateIndex}. Passing it spends RV first; each LV is worth 2 Gate Power.`
+        : `Gather RV, cleanse desecration, or land on a Divine tile. You need ${gateCost} Gate Power to pass the next gate.`;
   } else if (state.turnRolled) {
     title = "Turn action spent";
     body = "You have no movement left. End the turn to roll leopard movement and pass play to the next sect.";
   } else if (isInnerLevel) {
     icon = <Crown size={20} />;
     title = "Final approach";
-    body = `Roll D4 and reach the inner altar gate at tile ${gateIndex}. You have already paid ${player.gatesPaid}/2 judgments.`;
+    body = `Roll D4 and reach the inner altar gate at tile ${gateIndex}. You have already paid ${player.gatesPaid}/2 gate judgments.`;
   } else if (canPassGate && hasGateToChase) {
     title = "You can pass a gate";
-    body = `Roll D4 and head for tile ${gateIndex}. Your ${divinity(player)} Divinity Points are enough for the ${gateCost}-point sacrifice.`;
+    body = `Roll D4 and head for tile ${gateIndex}. Your ${gatePower(player)} Gate Power is enough for the ${gateCost}-point sacrifice.`;
   }
 
   return (

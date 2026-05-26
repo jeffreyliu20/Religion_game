@@ -30,17 +30,24 @@ export default function RulesPanel() {
           <div className="rules-columns">
             <ul>
               <li>3-6 human or AI sects begin with one Sacred Item.</li>
+              <li>AI rivals have personalities: Pilgrim, Martyr, Steward, or Trickster.</li>
               <li>Roll D4 for player movement.</li>
               <li>Move clockwise or counterclockwise along the current tier.</li>
               <li>Collect RV, cleanse Desecrated tiles, and gain Ritual Boons.</li>
               <li>Event tiles draw from the same 10 Divine Intervention cards.</li>
             </ul>
             <ul>
-              <li>Gate costs are 5, then 7 Divinity Points.</li>
-              <li>Gate sacrifice spends RV first, then LV.</li>
+              <li>Gate costs are 5, then 7 Gate Power.</li>
+              <li>Gate sacrifice spends RV first; each LV spent at a gate is worth 2 Gate Power.</li>
+              <li>A sect that reaches 15 LV wins by founding a cult that eclipses the altar race.</li>
+              <li>LV milestones grant cult titles that appear as ritual notifications.</li>
+              <li>After movement, the active player may spend 2 LV to recruit a Follower or claim a Relic.</li>
+              <li>LV can also buy power: spend 3 LV to upgrade D4 to D6, 5 LV to upgrade D6 to D10, or 2 LV for a one-use leopard ward.</li>
+              <li>Risky moments can offer optional ordeals: timing omens, casting lots, reciting signs, flight, or gathering offerings. Runner and snake ordeals move continuously and use keyboard input; failure can cost RV or LV.</li>
               <li>Followers and Relics are capped at 2 each.</li>
-              <li>D10 moves the leopard after each turn: 1-2 clockwise, 3-4 counterclockwise, 5-7 outward, 8-9 stalk, 10 inward.</li>
-              <li>The leopard eats at most one unprotected adjacent sect per movement.</li>
+              <li>D10 moves the leopard after each turn: 1-2 clockwise, 3-4 counterclockwise, 5-6 outward, 7 stalk, 8-10 inward.</li>
+              <li>The leopard eats at most one unprotected adjacent sect per movement and is repelled onward if it crosses a gate.</li>
+              <li>At the start of each new round, the second tier rotates 1 tile clockwise.</li>
               <li>Leopard movement desecrates tiles and can feed the ritual economy.</li>
             </ul>
           </div>
